@@ -33,18 +33,26 @@ def get_stock_data(symbol, function):
         url = f'https://www.alphavantage.co/query?function={function}&symbol={symbol}&apikey={api_key}'
     
     print(f"Requesting URL: {url}")  # Debug print
-    response = requests.get(url)
-    data = response.json()
-    
-    # Print response for debugging
-    if 'Error Message' in data:
-        print(f"API Error: {data['Error Message']}")
-    elif 'Note' in data:
-        print(f"API Note: {data['Note']}")
-    else:
-        print(f"Available keys in response: {data.keys()}")
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Check for HTTP errors
+        data = response.json()
         
-    return data
+        # Print response for debugging
+        if 'Error Message' in data:
+            print(f"API Error: {data['Error Message']}")
+        elif 'Note' in data:
+            print(f"API Note: {data['Note']}")
+        else:
+            print(f"Available keys in response: {data.keys()}")
+            
+        return data
+    except requests.exceptions.RequestException as e:
+        print(f"Request error: {e}")
+        return {"Error Message": str(e)}
+    except ValueError as e:
+        print(f"JSON parsing error: {e}")
+        return {"Error Message": "Invalid response from API"}
 
 # Load stock symbols from a CSV file using the csv module
 def load_stock_symbols():
@@ -53,7 +61,7 @@ def load_stock_symbols():
         with open('stocks.csv', newline='') as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                stock_symbols.append(row['Symbol'])  # Assuming the header is 'Symbol'
+                stock_symbols.append(row['Symbol'])
         return stock_symbols
     except FileNotFoundError:
         print("Warning: stocks.csv file not found")
@@ -94,13 +102,21 @@ def index():
             if 'Note' in stock_data:
                 raise ValueError(f"API Limit: {stock_data.get('Note')}")
 
-            # Process and plot data
-            dates, open_prices, high_prices, low_prices, closing_prices = process_data(stock_data, start_date, end_date, function)
+            # Process data
+            dates, open_prices, high_prices, low_prices, closing_prices = process_data(
+                stock_data, start_date, end_date, function
+            )
             
+            # Only raise error if there's really no data
             if not dates:
-                raise ValueError("No data available for the selected date range")
+                if function == "TIME_SERIES_INTRADAY":
+                    raise ValueError("For intraday data, please select today's date")
+                else:
+                    raise ValueError("Please try a different date range or stock symbol")
 
-            chart_file = plot_data(dates, open_prices, high_prices, low_prices, closing_prices, chart_type, symbol)
+            # Create chart if we have data
+            chart_file = plot_data(dates, open_prices, high_prices, low_prices, 
+                                 closing_prices, chart_type, symbol)
 
         except ValueError as e:
             error_message = str(e)
@@ -122,25 +138,24 @@ def process_data(data, start_date, end_date, function):
         "TIME_SERIES_DAILY": "Time Series (Daily)",
         "TIME_SERIES_WEEKLY": "Weekly Time Series",
         "TIME_SERIES_MONTHLY": "Monthly Time Series",
-        "TIME_SERIES_INTRADAY": "Time Series (5min)"  # For intraday data
+        "TIME_SERIES_INTRADAY": "Time Series (5min)"
     }
     
     # Get the correct key for the time series
     time_series_key = time_series_keys.get(function)
     if not time_series_key:
         print(f"Unsupported function: {function}")
-        print("Available data in response:", data.keys())  # Debug print
         return [], [], [], [], []
         
     # Get the time series data
     time_series = data.get(time_series_key, {})
     if not time_series:
-        print("No time series data found. Available keys:", data.keys())
-        print("Full response data:", data)  # Debug print
+        print("Available keys in response:", data.keys())
         return [], [], [], [], []
 
     print(f"Processing {function} data")
-    print("Available dates in API response:", time_series.keys())
+    print("Available dates:", list(time_series.keys())[:5])  # Show first 5 dates
+    
     dates = []
     open_prices = []
     high_prices = []
@@ -152,15 +167,14 @@ def process_data(data, start_date, end_date, function):
         compare_date = date.split()[0] if function == "TIME_SERIES_INTRADAY" else date
         
         if start_date <= compare_date <= end_date:
-            dates.append(date)
             try:
+                dates.append(date)
                 open_prices.append(float(values['1. open']))
                 high_prices.append(float(values['2. high']))
                 low_prices.append(float(values['3. low']))
                 closing_prices.append(float(values['4. close']))
             except (KeyError, ValueError) as e:
                 print(f"Error processing values for date {date}: {e}")
-                print("Values received:", values)
                 continue
 
     # Sort data by date
@@ -171,8 +185,6 @@ def process_data(data, start_date, end_date, function):
         high_prices = [item[2] for item in sorted_data]
         low_prices = [item[3] for item in sorted_data]
         closing_prices = [item[4] for item in sorted_data]
-    else:
-        print("No data found for the specified date range")
 
     print(f"Processed {len(dates)} data points")
     return dates, open_prices, high_prices, low_prices, closing_prices
@@ -183,12 +195,16 @@ def plot_data(dates, open_prices, high_prices, low_prices, closing_prices, chart
                           x_title='Date',
                           y_title='Price',
                           show_dots=False,
-                          x_label_rotation=45)  # Rotate labels for better readability
+                          x_label_rotation=45,
+                          show_minor_x_labels=False,
+                          truncate_label=-1)
     elif chart_type.lower() == 'bar':
         chart = pygal.Bar(title=f'Stock Price for {symbol}',
                          x_title='Date',
                          y_title='Price',
-                         x_label_rotation=45)
+                         x_label_rotation=45,
+                         show_minor_x_labels=False,
+                         truncate_label=-1)
     else:
         print("Unsupported chart type.")
         return None
@@ -202,14 +218,18 @@ def plot_data(dates, open_prices, high_prices, low_prices, closing_prices, chart
         if ' ' in date:  # Intraday data
             dt = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
             formatted_dates.append(dt.strftime('%Y-%m-%d %H:%M'))
-        else:  # Daily/Weekly data
+        else:  # Daily/Weekly/Monthly data
             formatted_dates.append(date)
     
+    # Only show every nth label to prevent overcrowding
+    n = max(len(dates) // 10, 1)  # Show about 10 labels
     chart.x_labels = formatted_dates
-    chart.add('Open', open_prices)
-    chart.add('High', high_prices)
-    chart.add('Low', low_prices)
-    chart.add('Close', closing_prices)
+    chart.x_labels_major = formatted_dates[::n]
+    
+    chart.add('Open', open_prices, show_dots=False)
+    chart.add('High', high_prices, show_dots=False)
+    chart.add('Low', low_prices, show_dots=False)
+    chart.add('Close', closing_prices, show_dots=False)
 
     # Save to static folder
     chart_file = 'static/stock_price_chart.svg'
