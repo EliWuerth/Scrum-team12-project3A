@@ -18,6 +18,24 @@
   - User input validation
 - Responsive web design with loading indicators
 
+## Input Validation
+The application includes input validation for the following fields:
+1. **Stock Symbol**: Must be capitalized and contain 1-7 alphabetic characters (e.g., "AAPL").
+2. **Chart Type**: Must be either '1' (line chart) or '2' (bar chart).
+3. **Time Series**: Must be one of the following: '1' (Intraday), '2' (Daily), '3' (Weekly), '4' (Monthly).
+4. **Start Date**: Must be in the format YYYY-MM-DD.
+5. **End Date**: Must also be in the format YYYY-MM-DD.
+
+## Unit Testing
+The project includes unit tests to ensure that the input validation functions work as expected. The tests cover various valid and invalid cases for each input type.
+
+### Running Unit Tests
+To run the unit tests, ensure you have Python installed and navigate to the directory where the test file is located. Then run the following command:
+
+```bash
+python test_input_validation.py
+```
+
 ## Setup Instructions
 
 ### Prerequisites
@@ -63,9 +81,10 @@ docker-compose down
 ├── Dockerfile          # Docker configuration
 ├── docker-compose.yml  # Docker Compose configuration
 ├── requirements.txt    # Python dependencies
-├── stocks.csv         # Stock symbols data
-├── static/            # Generated charts
-└── templates/         # HTML templates
+├── stocks.csv          # Stock symbols data
+├── static/             # Generated charts
+├── templates/          # HTML templates
+└── testCases.py  # Unit tests for input validation
 ```
 
 ## Improvements Made
