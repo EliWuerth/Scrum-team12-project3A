@@ -5,9 +5,31 @@ import csv
 from lxml import etree
 from datetime import datetime
 import os
+import re
 
 app = Flask(__name__)
 app.config["DEBUG"] = True
+
+# Input Validation Functions
+def validate_symbol(symbol):
+    """Validate the stock symbol."""
+    return bool(re.match(r'^[A-Z]{1,7}$', symbol))
+
+def validate_chart_type(chart_type):
+    """Validate the chart type."""
+    return chart_type in ['1', '2']
+
+def validate_time_series(time_series):
+    """Validate the time series."""
+    return time_series in ['1', '2', '3', '4']
+
+def validate_date(date_str):
+    """Validate the date format YYYY-MM-DD."""
+    try:
+        datetime.strptime(date_str, '%Y-%m-%d')
+        return True
+    except ValueError:
+        return False
 
 # Function to validate date inputs
 def validate_dates(start_date, end_date):
